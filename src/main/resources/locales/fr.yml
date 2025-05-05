@@ -67,7 +67,7 @@ community:
     
     sort:
       material: "bookshelf"
-      name: "<#DEA11F><bold>Sort par %s"
+      name: "<#DEA11F><bold>Sorté par %s"
       lore: ""
       values: [ "score", "temps", "difficulté" ]
     
@@ -241,7 +241,7 @@ scoreboard:
 other:
   
   no_do: "<gray>Vous ne pouvez pas faire ça maintenant."
-  no_teleporting: "<white>You can''t enter the parkour world by teleporting!"
+  no_teleporting: "<white>You can't enter the parkour world by teleporting!"
   customize: "<gray>Customisez votre parkour en faisant \"/parkour\""
   
   quit:
@@ -253,3 +253,8 @@ other:
     material: "arrow"
     name: "<#F5A3A3><bold>Fermé"
     lore: ""
+
+  iep:
+    material: "elytra"
+    name: "<#4800FF><bold>Flying"
+    lore: "<gray>Parkour with elytra!"

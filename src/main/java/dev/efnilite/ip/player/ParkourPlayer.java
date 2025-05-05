@@ -2,6 +2,7 @@ package dev.efnilite.ip.player;
 
 import com.google.gson.annotations.Expose;
 import dev.efnilite.ip.IP;
+import dev.efnilite.ip.config.Config;
 import dev.efnilite.ip.config.Locales;
 import dev.efnilite.ip.config.Option;
 import dev.efnilite.ip.generator.ParkourGenerator;
@@ -10,7 +11,8 @@ import dev.efnilite.ip.menu.ParkourOption;
 import dev.efnilite.ip.mode.MultiMode;
 import dev.efnilite.ip.player.data.PreviousData;
 import dev.efnilite.ip.session.Session;
-import dev.efnilite.ip.world.WorldDivider;
+import dev.efnilite.ip.storage.Storage;
+import dev.efnilite.ip.world.Divider;
 import dev.efnilite.vilib.inventory.Menu;
 import dev.efnilite.vilib.inventory.item.Item;
 import dev.efnilite.vilib.util.Colls;
@@ -18,6 +20,7 @@ import dev.efnilite.vilib.util.Task;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffect;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -83,6 +86,10 @@ public class ParkourPlayer extends ParkourUser {
         player.setFlying(false);
         player.setAllowFlight(false);
         player.setInvisible(false);
+
+        for (PotionEffect effect : player.getActivePotionEffects()) {
+            player.removePotionEffect(effect.getType());
+        }
     }
 
     private static boolean parseBoolean(String string) {
@@ -114,14 +121,18 @@ public class ParkourPlayer extends ParkourUser {
      * @return List with all players.
      */
     public static List<ParkourPlayer> getPlayers() {
-        return WorldDivider.sessions.values().stream()
+        return Divider.sections.keySet().stream()
                 .flatMap(session -> session.getPlayers().stream())
                 .toList();
     }
 
     @Override
     public void unregister() {
-        if (session.generator.getMode() instanceof MultiMode mode) {
+        IP.log("Unregistering player %s".formatted(player.getName()));
+
+        if (session.generator != null &&
+                session.generator.getMode() != null &&
+                session.generator.getMode() instanceof MultiMode mode) {
             mode.leave(player, session);
         }
 
@@ -176,7 +187,7 @@ public class ParkourPlayer extends ParkourUser {
      * Saves the player's data to their file
      */
     public void save(boolean async) {
-        Runnable write = () -> IP.getStorage().writePlayer(this);
+        Runnable write = () -> Storage.writePlayer(this);
 
         if (async) {
             Task.create(IP.getPlugin()).async().execute(write).run();
@@ -186,6 +197,8 @@ public class ParkourPlayer extends ParkourUser {
     }
 
     public void setup(Location to) {
+        IP.log("Setting up player %s".formatted(player.getName()));
+
         if (to != null) {
             teleport(to);
         }
@@ -193,8 +206,10 @@ public class ParkourPlayer extends ParkourUser {
         player.setGameMode(GameMode.ADVENTURE);
 
         // -= Inventory =-
-        if (Option.INVENTORY_HANDLING) {
+        if (Config.CONFIG.getBoolean("options.inventory-handling")) {
             Task.create(IP.getPlugin()).delay(5).execute(() -> {
+                IP.log("Setting up inventory for player %s".formatted(player.getName()));
+
                 player.getInventory().clear();
 
                 List<Item> items = new ArrayList<>();

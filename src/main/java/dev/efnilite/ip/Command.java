@@ -6,21 +6,21 @@ import dev.efnilite.ip.config.Locales;
 import dev.efnilite.ip.leaderboard.Leaderboard;
 import dev.efnilite.ip.menu.Menus;
 import dev.efnilite.ip.menu.ParkourOption;
-import dev.efnilite.ip.menu.community.SingleLeaderboardMenu;
 import dev.efnilite.ip.mode.Mode;
 import dev.efnilite.ip.mode.Modes;
 import dev.efnilite.ip.mode.MultiMode;
 import dev.efnilite.ip.player.ParkourPlayer;
 import dev.efnilite.ip.player.ParkourUser;
 import dev.efnilite.ip.player.data.InventoryData;
-import dev.efnilite.ip.schematic.Schematics;
 import dev.efnilite.ip.session.Session;
 import dev.efnilite.vilib.command.ViCommand;
 import dev.efnilite.vilib.inventory.item.Item;
 import dev.efnilite.vilib.particle.ParticleData;
 import dev.efnilite.vilib.particle.Particles;
 import dev.efnilite.vilib.schematic.Schematic;
+import dev.efnilite.vilib.schematic.Schematics;
 import dev.efnilite.vilib.util.Locations;
+import dev.efnilite.vilib.util.Strings;
 import org.bukkit.*;
 import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.CommandSender;
@@ -32,10 +32,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-import static dev.efnilite.ip.util.Util.send;
-
 @SuppressWarnings("deprecation")
-public class ParkourCommand extends ViCommand {
+public class Command extends ViCommand {
 
     public static final HashMap<Player, Location[]> selections = new HashMap<>();
 
@@ -139,7 +137,7 @@ public class ParkourCommand extends ViCommand {
         send(sender, "");
         send(sender, "<gray>/parkour <dark_gray>- Main command");
         if (sender.hasPermission(ParkourOption.JOIN.permission)) {
-            send(sender, "<gray>/parkour join [mode] <dark_gray>- Join the default mode or specify one.");
+            send(sender, "<gray>/parkour join [mode/player] <dark_gray>- Join the default mode or specify one.");
             send(sender, "<gray>/parkour leave <dark_gray>- Leave the game on this server");
         }
         if (sender.hasPermission(ParkourOption.MAIN.permission)) {
@@ -452,7 +450,7 @@ public class ParkourCommand extends ViCommand {
                 if (mode == null) {
                     Menus.LEADERBOARDS.open(player);
                 } else {
-                    Menus.SINGLE_LEADERBOARD.open(player, mode, SingleLeaderboardMenu.Sort.SCORE);
+                    Menus.SINGLE_LEADERBOARD.open(player, mode, Leaderboard.Sort.SCORE);
                 }
             }
             case "schematic" -> {
@@ -510,7 +508,7 @@ public class ParkourCommand extends ViCommand {
 
                         send(player, ("<dark_red><bold>Schematics <reset><gray>Your schematic is being saved. It will use code <red>'%s'<gray>. " + "You can change the code to whatever you like. " + "Don't forget to add this schematic to <dark_gray>schematics.yml<gray>.").formatted(code));
 
-                        Schematic.create().save(IP.getInFolder("schematics/parkour-%s".formatted(code)), existingSelection[0], existingSelection[1], IP.getPlugin());
+                        Schematic.save(IP.getInFolder("schematics/parkour-%s".formatted(code)), existingSelection[0], existingSelection[1], IP.getPlugin());
                     }
                 }
             }
@@ -531,7 +529,7 @@ public class ParkourCommand extends ViCommand {
                 return;
             }
 
-            Schematic schematic = Schematics.CACHE.get(arg3);
+            Schematic schematic = Schematics.getSchematic(IP.getPlugin(), arg3);
             if (schematic == null) {
                 send(sender, "%sCouldn't find %s".formatted(IP.PREFIX, arg3));
                 return;
@@ -540,5 +538,9 @@ public class ParkourCommand extends ViCommand {
             schematic.paste(player.getLocation());
             send(sender, "%sPasted schematic %s".formatted(IP.PREFIX, arg3));
         }
+    }
+
+    private void send(CommandSender sender, String message) {
+        sender.sendMessage(Strings.colour(message));
     }
 }

@@ -1,8 +1,10 @@
 package dev.efnilite.ip.mode;
 
-import dev.efnilite.ip.config.Option;
+import dev.efnilite.ip.config.Config;
+import dev.efnilite.ip.config.Locales;
 import dev.efnilite.ip.leaderboard.Leaderboard;
 import dev.efnilite.ip.menu.Menus;
+import dev.efnilite.ip.menu.ParkourOption;
 import dev.efnilite.ip.player.ParkourSpectator;
 import dev.efnilite.ip.player.ParkourUser;
 import dev.efnilite.ip.session.Session;
@@ -37,16 +39,24 @@ public class SpectatorMode implements Mode {
     }
 
     public void create(Player player, Session session) {
-        if (!Option.JOINING) {
+        if (!Config.CONFIG.getBoolean("joining")) {
             player.sendMessage(Strings.colour("<red><bold>Joining is currently disabled."));
+            return;
+        }
+        if (!ParkourOption.SPECTATOR.mayPerform(player)) {
+            player.sendMessage(Locales.getString(player, "other.no_do"));
             return;
         }
 
         ParkourUser user = ParkourUser.getUser(player);
         ParkourSpectator spectator;
 
+        if (session.getPlayers().isEmpty()) {
+            return;
+        }
+
         if (user != null) {
-            ParkourUser.unregister(user, false, false);
+            ParkourUser.unregister(user, false, false, false);
             spectator = new ParkourSpectator(player, session, user.previousData);
         } else {
             spectator = new ParkourSpectator(player, session, null);

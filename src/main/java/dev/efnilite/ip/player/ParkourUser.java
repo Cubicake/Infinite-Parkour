@@ -9,28 +9,32 @@ import dev.efnilite.ip.config.Config;
 import dev.efnilite.ip.config.Locales;
 import dev.efnilite.ip.config.Option;
 import dev.efnilite.ip.generator.ParkourGenerator;
+import dev.efnilite.ip.hook.FloodgateHook;
 import dev.efnilite.ip.leaderboard.Leaderboard;
 import dev.efnilite.ip.leaderboard.Score;
 import dev.efnilite.ip.menu.ParkourOption;
 import dev.efnilite.ip.mode.Mode;
+import dev.efnilite.ip.mode.Modes;
 import dev.efnilite.ip.player.data.PreviousData;
 import dev.efnilite.ip.session.Session;
-import dev.efnilite.ip.session.SessionChat;
-import dev.efnilite.ip.util.Util;
-import dev.efnilite.ip.world.WorldDivider;
+import dev.efnilite.ip.storage.Storage;
+import dev.efnilite.ip.world.Divider;
 import dev.efnilite.vilib.fastboard.FastBoard;
 import dev.efnilite.vilib.util.Strings;
+import io.papermc.lib.PaperLib;
 import me.clip.placeholderapi.PlaceholderAPI;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.messaging.ChannelNotRegisteredException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Superclass of every type of player. This encompasses every player currently in the Parkour world.
@@ -52,17 +56,20 @@ public abstract class ParkourUser {
         ParkourUser existing = getUser(player);
 
         if (existing != null) {
-            data = existing.previousData;
-            unregister(existing, false, false);
-        }
+            IP.log("Registering player %s with existing data".formatted(player.getName()));
 
+            data = existing.previousData;
+            unregister(existing, false, false, false);
+        } else {
+            IP.log("Registering player %s".formatted(player.getName()));
+        }
         ParkourPlayer pp = new ParkourPlayer(player, session, data);
 
         // stats
         joinCount++;
         new ParkourJoinEvent(pp).call();
 
-        IP.getStorage().readPlayer(pp);
+        Storage.readPlayer(pp);
         return pp;
     }
 
@@ -86,7 +93,7 @@ public abstract class ParkourUser {
      * @param user The user.
      */
     public static void leave(@NotNull ParkourUser user) {
-        unregister(user, true, true);
+        unregister(user, true, true, false);
     }
 
     /**
@@ -96,10 +103,10 @@ public abstract class ParkourUser {
      * @param restorePreviousData Whether to restore the data from before the player joined the parkour.
      * @param kickIfBungee        Whether to kick the player if Bungeecord mode is enabled.
      */
-    public static void unregister(@NotNull ParkourUser user, boolean restorePreviousData, boolean kickIfBungee) {
+    public static void unregister(@NotNull ParkourUser user, boolean restorePreviousData, boolean kickIfBungee, boolean urgent) {
         new ParkourLeaveEvent(user).call();
+        IP.log("Unregistering player %s, restorePreviousData = %s, kickIfBungee = %s".formatted(user.getName(), restorePreviousData, kickIfBungee));
 
-        Mode mode = user.session.generator.getMode();
         try {
             user.unregister();
 
@@ -111,19 +118,25 @@ public abstract class ParkourUser {
             user.send("<red><bold>There was an error while trying to handle leaving.");
         }
 
-        if (restorePreviousData && Option.ON_JOIN && kickIfBungee) {
+        if (restorePreviousData && Config.CONFIG.getBoolean("bungeecord.enabled") && kickIfBungee) {
             sendPlayerToServer(user.player, Config.CONFIG.getString("bungeecord.return_server"));
             return;
         }
 
-        user.previousData.apply(user.player, restorePreviousData);
+        if (!restorePreviousData) return;
 
-        if (user instanceof ParkourPlayer player) {
-            user.previousData.onLeave.forEach(r -> r.execute(player, mode));
+        user.previousData.apply(user.player, urgent);
+
+        Mode mode = user.session.generator.getMode();
+        if (mode == null) {
+            IP.logging().error("Mode is null for %s".formatted(user.getName()));
+            mode = Modes.DEFAULT;
         }
 
-        user.player.resetPlayerTime();
-        user.player.resetPlayerWeather();
+        if (user instanceof ParkourPlayer player) {
+            Mode finalMode = mode;
+            user.previousData.onLeave.forEach(r -> r.execute(player, finalMode));
+        }
     }
 
     // Sends a player to a BungeeCord server. server is the server name.
@@ -160,12 +173,12 @@ public abstract class ParkourUser {
     }
 
     /**
-     * @return List with all users.
+     * @return Set with all users.
      */
-    public static List<ParkourUser> getUsers() {
-        return WorldDivider.sessions.values().stream()
+    public static Set<ParkourUser> getUsers() {
+        return Divider.sections.keySet().stream()
                 .flatMap(session -> session.getUsers().stream())
-                .toList();
+                .collect(Collectors.toSet());
     }
 
     /**
@@ -186,9 +199,9 @@ public abstract class ParkourUser {
     public PreviousData previousData;
 
     /**
-     * The selected {@link SessionChat.ChatType}
+     * The selected {@link Session.ChatType}
      */
-    public SessionChat.ChatType chatType = SessionChat.ChatType.PUBLIC;
+    public Session.ChatType chatType = Session.ChatType.PUBLIC;
 
     /**
      * The {@link Session} this user is in.
@@ -227,12 +240,12 @@ public abstract class ParkourUser {
     protected abstract void unregister();
 
     /**
-     * Teleports the player asynchronously, which helps with unloaded chunks (?)
+     * Teleports the player asynchronously.
      *
      * @param to Where the player will be teleported to
      */
     public void teleport(@NotNull Location to) {
-        player.teleport(to, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        PaperLib.teleportAsync(player, to);
     }
 
     /**
@@ -241,7 +254,7 @@ public abstract class ParkourUser {
      * @param message The message
      */
     public void send(String message) {
-        Util.send(player, message);
+        player.sendMessage(Strings.colour(message));
     }
 
     /**
@@ -318,5 +331,13 @@ public abstract class ParkourUser {
      */
     public String getName() {
         return player.getName();
+    }
+
+    /**
+     * @param player The player
+     * @return true if the player is a Bedrock player, false if not.
+     */
+    public static boolean isBedrockPlayer(Player player) {
+        return Bukkit.getPluginManager().isPluginEnabled("floodgate") && FloodgateHook.isBedrockPlayer(player);
     }
 }

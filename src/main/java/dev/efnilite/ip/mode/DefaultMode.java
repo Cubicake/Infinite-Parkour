@@ -1,13 +1,11 @@
 package dev.efnilite.ip.mode;
 
+import dev.efnilite.ip.config.Config;
 import dev.efnilite.ip.config.Locales;
-import dev.efnilite.ip.config.Option;
 import dev.efnilite.ip.generator.ParkourGenerator;
 import dev.efnilite.ip.leaderboard.Leaderboard;
-import dev.efnilite.ip.menu.community.SingleLeaderboardMenu;
 import dev.efnilite.ip.player.ParkourPlayer;
 import dev.efnilite.ip.session.Session;
-import dev.efnilite.ip.util.Util;
 import dev.efnilite.vilib.inventory.item.Item;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -18,7 +16,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class DefaultMode implements Mode {
 
-    private final Leaderboard leaderboard = new Leaderboard(getName(), SingleLeaderboardMenu.Sort.SCORE);
+    private final Leaderboard leaderboard = new Leaderboard(getName(), Leaderboard.Sort.SCORE);
 
     @Override
     @NotNull
@@ -40,15 +38,16 @@ public class DefaultMode implements Mode {
 
     @Override
     public void create(Player player) {
-        if (!Option.JOINING) {
-            Util.send(player, "<red><bold>Joining is currently disabled.");
+        if (!Config.CONFIG.getBoolean("joining")) {
+            player.sendMessage("Joining is currently disabled.");
             return;
         }
 
         ParkourPlayer pp = ParkourPlayer.getPlayer(player);
-        if (pp != null && pp.session.generator.getMode() instanceof DefaultMode) {
+        if (pp != null && pp.session.generator != null && pp.session.generator.getMode() instanceof DefaultMode) {
             return;
         }
+
         player.closeInventory();
 
         Session.create(ParkourGenerator::new, null, null, player);

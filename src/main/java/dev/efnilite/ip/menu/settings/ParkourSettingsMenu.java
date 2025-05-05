@@ -2,6 +2,7 @@ package dev.efnilite.ip.menu.settings;
 
 import dev.efnilite.ip.IP;
 import dev.efnilite.ip.api.Registry;
+import dev.efnilite.ip.config.Config;
 import dev.efnilite.ip.config.Locales;
 import dev.efnilite.ip.config.Option;
 import dev.efnilite.ip.menu.DynamicMenu;
@@ -9,8 +10,8 @@ import dev.efnilite.ip.menu.Menus;
 import dev.efnilite.ip.menu.ParkourOption;
 import dev.efnilite.ip.player.ParkourPlayer;
 import dev.efnilite.ip.player.ParkourUser;
+import dev.efnilite.ip.style.RandomStyle;
 import dev.efnilite.ip.style.Style;
-import dev.efnilite.ip.util.Util;
 import dev.efnilite.vilib.fastboard.FastBoard;
 import dev.efnilite.vilib.inventory.Menu;
 import dev.efnilite.vilib.inventory.MenuClickEvent;
@@ -19,7 +20,6 @@ import dev.efnilite.vilib.inventory.item.Item;
 import dev.efnilite.vilib.inventory.item.MenuItem;
 import dev.efnilite.vilib.inventory.item.SliderItem;
 import dev.efnilite.vilib.inventory.item.TimedItem;
-import dev.efnilite.vilib.util.Colls;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -123,19 +123,21 @@ public class ParkourSettingsMenu extends DynamicMenu {
             // Source: https://minecraft.fandom.com/wiki/Daylight_cycle?file=Day_Night_Clock_24h.png
             List<Integer> times = Arrays.asList(0, 6000, 12000, 18000); // 00:00 -> 6:00 -> 12:00 -> 18:00
 
+            var format = Config.CONFIG.getInt("options.time.format");
+
             return new SliderItem()
                 .initial(times.indexOf(player.selectedTime))
                 .add(0, item.clone()
-                        .modifyLore(line -> line.replace("%s", Option.TIME_FORMAT == 12 ? "12:00 AM" : "00:00")),
+                        .modifyLore(line -> line.replace("%s", format == 12 ? "12:00 AM" : "00:00")),
                     event -> handleSettingChange(player, () -> player.selectedTime = 0))
                 .add(1, item.clone()
-                        .modifyLore(line -> line.replace("%s", Option.TIME_FORMAT == 12 ? "6:00 AM" : "6:00")),
+                        .modifyLore(line -> line.replace("%s", format == 12 ? "6:00 AM" : "6:00")),
                     event -> handleSettingChange(player, () -> player.selectedTime = 6000))
                 .add(2, item.clone()
-                        .modifyLore(line -> line.replace("%s", Option.TIME_FORMAT == 12 ? "12:00 PM" : "12:00")),
+                        .modifyLore(line -> line.replace("%s", format == 12 ? "12:00 PM" : "12:00")),
                     event -> handleSettingChange(player, () -> player.selectedTime = 12000))
                 .add(3, item.clone()
-                        .modifyLore(line -> line.replace("%s", Option.TIME_FORMAT == 12 ? "6:00 PM" : "18:00")),
+                        .modifyLore(line -> line.replace("%s", format == 12 ? "6:00 PM" : "18:00")),
                     event -> handleSettingChange(player, () -> player.selectedTime = 18000));
         }, player -> checkOptions(player, ParkourOption.TIME, disabled));
 
@@ -273,8 +275,7 @@ public class ParkourSettingsMenu extends DynamicMenu {
     public void open(ParkourPlayer user) {
         display(user.player, new Menu(4, Locales.getString(user.locale, "settings.name"))
             .distributeRowEvenly(0, 1, 2, 3)
-            .item(27, Locales.getItem(user.locale, "other.close").click(event -> Menus.SETTINGS.open(event.getPlayer())))
-            .fillBackground(Util.isBedrockPlayer(user.player) ? Material.AIR : Material.GRAY_STAINED_GLASS_PANE));
+            .item(27, Locales.getItem(user.locale, "other.close").click(event -> Menus.SETTINGS.open(event.getPlayer()))));
     }
 
     /**
@@ -288,16 +289,19 @@ public class ParkourSettingsMenu extends DynamicMenu {
 
         List<MenuItem> items = new ArrayList<>();
         for (Style style : Registry.getStyles()) {
-            String perm = ParkourOption.STYLES.permission + "." + style.name().toLowerCase();
-            if (Option.PERMISSIONS_STYLES && !player.player.hasPermission(perm.replace(" ", "."))) {
+            var name = style.getName();
+
+            var perm = "%s.%s".formatted(ParkourOption.STYLES.permission, name.toLowerCase());
+            if (Config.CONFIG.getBoolean("permissions.per-style") && !player.player.hasPermission(perm.replace(" ", "."))) {
                 continue;
             }
 
-            items.add(Locales.getItem(player.player, ParkourOption.STYLES.path + ".style_item", style.name(), style.category())
-                .material(Colls.random(style.materials()).getMaterial())
-                .glowing(player.style.equals(style.name()))
+            var category = style instanceof RandomStyle ? "random" : "incremental";
+
+            items.add(Locales.getItem(player.player, ParkourOption.STYLES.path + ".style_item", name, category)
+                .material(style.getNext())
                 .click(event -> {
-                    player.style = style.name();
+                    player.style = name;
                     player.updateGeneratorSettings(player.session.generator);
                     open(player);
                 }));
@@ -308,7 +312,7 @@ public class ParkourSettingsMenu extends DynamicMenu {
                 .nextPage(26, new Item(Material.LIME_DYE, "<#0DCB07><bold>»").click(event -> menu.page(1)))
                 .prevPage(18, new Item(Material.RED_DYE, "<#DE1F1F><bold>«").click(event -> menu.page(-1)))
                 .item(22, Locales.getItem(player.locale, "other.close").click(event -> open(player)))
-                .fillBackground(Util.isBedrockPlayer(player.player) ? Material.AIR : Material.GRAY_STAINED_GLASS_PANE).open(player.player);
+                .open(player.player);
     }
 
     private boolean handleSettingChange(ParkourPlayer player, Runnable onAllowed) {

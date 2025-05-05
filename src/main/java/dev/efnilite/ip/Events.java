@@ -8,15 +8,16 @@ import dev.efnilite.ip.menu.ParkourOption;
 import dev.efnilite.ip.mode.Modes;
 import dev.efnilite.ip.player.ParkourPlayer;
 import dev.efnilite.ip.player.ParkourUser;
-import dev.efnilite.ip.player.data.PreviousData;
-import dev.efnilite.ip.world.VoidGenerator;
-import dev.efnilite.ip.world.WorldManager;
-import dev.efnilite.ip.world.WorldManagerMV;
+import dev.efnilite.ip.session.Session;
+import dev.efnilite.ip.world.World;
 import dev.efnilite.vilib.event.EventWatcher;
 import dev.efnilite.vilib.particle.ParticleData;
 import dev.efnilite.vilib.particle.Particles;
 import dev.efnilite.vilib.util.Locations;
+import dev.efnilite.vilib.util.Strings;
+import io.papermc.lib.PaperLib;
 import org.bukkit.*;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventHandler;
@@ -36,68 +37,66 @@ import org.jetbrains.annotations.ApiStatus;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.NoSuchElementException;
-import java.util.UUID;
-
-import static dev.efnilite.ip.util.Util.send;
 
 /**
  * Internal event handler
  */
 @ApiStatus.Internal
-public class Handler implements EventWatcher {
+public class Events implements EventWatcher {
 
-    /**
-     * If a player quits and rejoins, give them their stuff back
-     */
-    private final HashMap<UUID, PreviousData> quitPreviousData = new HashMap<>();
+    @EventHandler
+    public void chat(AsyncPlayerChatEvent event) {
+        if (!Option.OPTIONS_ENABLED.get(ParkourOption.CHAT)) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        ParkourUser user = ParkourUser.getUser(player);
+
+        if (user == null) {
+            return;
+        }
+
+        Session session = user.session;
+
+        if (session.isMuted(user)) {
+            return;
+        }
+
+        event.setCancelled(true);
+        switch (user.chatType) {
+            case LOBBY_ONLY -> session.getUsers().forEach(other -> other.sendTranslated("settings.chat.formats.lobby", player.getName(), event.getMessage()));
+            case PLAYERS_ONLY -> session.getPlayers().forEach(other -> other.sendTranslated("settings.chat.formats.players", player.getName(), event.getMessage()));
+            default -> event.setCancelled(false);
+        }
+    }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void join(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
 
-        // admin messages
-        if (player.isOp() && IP.getPlugin().getElevator().isOutdated()) {
-            send(player, "");
-            send(player, IP.PREFIX + "Your version is outdated. Please visit the Spigot page to update.");
-            send(player, "");
-        }
-
-        if (player.isOp() && WorldManagerMV.MANAGER != null && VoidGenerator.getMultiverseGenerator() == null) {
-            send(player, "");
-            send(player, IP.PREFIX + "You are running Multiverse without VoidGen. This causes extreme lag spikes and performance issues while playing. Please visit the wiki to fix this.");
-            send(player, "");
-        }
-
-        if (quitPreviousData.containsKey(uuid)) {
-            quitPreviousData.get(uuid).apply(player, false);
-            quitPreviousData.remove(uuid);
-        }
-
-        if (Option.ON_JOIN) {
+        if (Config.CONFIG.getBoolean("bungeecord.enabled")) {
             Modes.DEFAULT.create(player);
             return;
         }
 
-        if (!player.getWorld().equals(WorldManager.getWorld())) {
+        if (!player.getWorld().equals(World.getWorld())) {
             return;
         }
 
-        World fallback = Bukkit.getWorld(Config.CONFIG.getString("world.fall-back"));
+        org.bukkit.World fallback = Bukkit.getWorld(Config.CONFIG.getString("world.fall-back"));
 
         if (fallback != null) {
-            player.teleport(fallback.getSpawnLocation(), PlayerTeleportEvent.TeleportCause.PLUGIN);
+            PaperLib.teleportAsync(player, fallback.getSpawnLocation(), PlayerTeleportEvent.TeleportCause.PLUGIN);
             return;
         }
 
-        player.teleport(Bukkit.getWorlds().stream()
-                .filter(world -> !world.equals(WorldManager.getWorld()))
+        PaperLib.teleportAsync(player, Bukkit.getWorlds().stream()
+                .filter(world -> !world.equals(World.getWorld()))
                 .findAny()
                 .orElseThrow(() -> new NoSuchElementException("No fallback world was found!"))
-                .getSpawnLocation(),
-            PlayerTeleportEvent.TeleportCause.PLUGIN);
+                .getSpawnLocation());
     }
 
     @EventHandler
@@ -108,14 +107,12 @@ public class Handler implements EventWatcher {
             return;
         }
 
-        quitPreviousData.put(user.getUUID(), user.previousData);
-
-        ParkourUser.leave(user);
+        ParkourUser.unregister(user, true, false, true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void command(PlayerCommandPreprocessEvent event) {
-        if (!Option.FOCUS_MODE) {
+        if (!Config.CONFIG.getBoolean("focus-mode.enabled")) {
             return;
         }
 
@@ -126,7 +123,7 @@ public class Handler implements EventWatcher {
         }
 
         String command = event.getMessage().toLowerCase();
-        if (Option.FOCUS_MODE_WHITELIST.stream().anyMatch(c -> command.contains(c.toLowerCase()))) {
+        if (Config.CONFIG.getStringList("focus-mode.whitelist").stream().anyMatch(c -> command.contains(c.toLowerCase()))) {
             return;
         }
 
@@ -146,7 +143,7 @@ public class Handler implements EventWatcher {
         }
 
         Location location = event.getClickedBlock().getLocation();
-        Location[] existingSelection = ParkourCommand.selections.get(player);
+        Location[] existingSelection = Command.selections.get(player);
 
         event.setCancelled(true);
 
@@ -155,11 +152,11 @@ public class Handler implements EventWatcher {
                 send(player, IP.PREFIX + "Position 1 was set to " + Locations.toString(location, true));
 
                 if (existingSelection == null) {
-                    ParkourCommand.selections.put(player, new Location[]{location, null});
+                    Command.selections.put(player, new Location[]{location, null});
                     return;
                 }
 
-                ParkourCommand.selections.put(player, new Location[]{location, existingSelection[1]});
+                Command.selections.put(player, new Location[]{location, existingSelection[1]});
 
                 Particles.box(BoundingBox.of(location, existingSelection[1]), player.getWorld(), new ParticleData<>(Particle.END_ROD, null, 2), player, 0.2);
             }
@@ -167,11 +164,11 @@ public class Handler implements EventWatcher {
                 send(player, IP.PREFIX + "Position 2 was set to " + Locations.toString(location, true));
 
                 if (existingSelection == null) {
-                    ParkourCommand.selections.put(player, new Location[]{null, location});
+                    Command.selections.put(player, new Location[]{null, location});
                     return;
                 }
 
-                ParkourCommand.selections.put(player, new Location[]{existingSelection[0], location});
+                Command.selections.put(player, new Location[]{existingSelection[0], location});
 
                 Particles.box(BoundingBox.of(existingSelection[0], location), player.getWorld(), new ParticleData<>(Particle.END_ROD, null, 2), player, 0.2);
             }
@@ -222,7 +219,9 @@ public class Handler implements EventWatcher {
         } else if (held == quit) {
             ParkourUser.leave(player);
         } else {
-            event.setCancelled(false);
+            if (!Config.CONFIG.getBoolean("options.disable-inventory-blocks")) {
+                event.setCancelled(false);
+            }
         }
     }
 
@@ -235,17 +234,20 @@ public class Handler implements EventWatcher {
     public void switchWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
         ParkourUser user = ParkourUser.getUser(player);
-        World parkour = WorldManager.getWorld();
+        org.bukkit.World parkour = World.getWorld();
 
-        boolean isAdmin = Option.PERMISSIONS ? ParkourOption.ADMIN.mayPerform(player) : player.isOp();
+        boolean isAdmin = Config.CONFIG.getBoolean("permissions.enabled") ? ParkourOption.ADMIN.mayPerform(player) : player.isOp();
 
         if (player.getWorld() == parkour && user == null && !isAdmin && player.getTicksLived() > 20) {
-            player.kickPlayer("You can't enter the parkour world by teleporting!");
+            Bukkit.getWorlds().stream()
+                    .filter(world -> !world.equals(parkour))
+                    .findAny()
+                    .ifPresent(world -> PaperLib.teleportAsync(player, world.getSpawnLocation()));
             return;
         }
 
         if (event.getFrom() == parkour && user != null && Duration.between(user.joined, Instant.now()).toMillis() > 100) {
-            ParkourUser.unregister(user, false, false);
+            ParkourUser.unregister(user, true, false, false);
         }
     }
 
@@ -273,7 +275,7 @@ public class Handler implements EventWatcher {
         handleRestriction(player, event);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void inventory(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player) || event.getInventory().getType() == InventoryType.CRAFTING) {
             return;
@@ -291,11 +293,24 @@ public class Handler implements EventWatcher {
         handleRestriction(event.getPlayer(), event);
     }
 
+//    @EventHandler(priority = EventPriority.HIGHEST)
+//    public void mount(EntityMountEvent event) {
+//        if (!(event.getEntity() instanceof Player player)) {
+//            return;
+//        }
+//
+//        handleRestriction(player, event);
+//    }
+
     private void handleRestriction(Player player, Cancellable event) {
         if (!ParkourUser.isUser(player)) {
             return;
         }
 
         event.setCancelled(true);
+    }
+
+    private void send(CommandSender sender, String message) {
+        sender.sendMessage(Strings.colour(message));
     }
 }

@@ -8,7 +8,6 @@ import dev.efnilite.ip.menu.Menus;
 import dev.efnilite.ip.menu.ParkourOption;
 import dev.efnilite.ip.mode.Mode;
 import dev.efnilite.ip.player.ParkourUser;
-import dev.efnilite.ip.util.Util;
 import dev.efnilite.vilib.inventory.PagedMenu;
 import dev.efnilite.vilib.inventory.item.Item;
 import dev.efnilite.vilib.inventory.item.MenuItem;
@@ -44,7 +43,7 @@ public class LeaderboardsMenu {
         }
 
         if (items.size() == 1) {
-            Menus.SINGLE_LEADERBOARD.open(player, latest, SingleLeaderboardMenu.Sort.SCORE);
+            Menus.SINGLE_LEADERBOARD.open(player, latest, Leaderboard.Sort.SCORE);
             return;
         }
 
@@ -53,7 +52,6 @@ public class LeaderboardsMenu {
                 .nextPage(26, new Item(Material.LIME_DYE, "<#0DCB07><bold>»").click(event -> menu.page(1)))
                 .prevPage(18, new Item(Material.RED_DYE, "<#DE1F1F><bold>«").click(event -> menu.page(-1)))
                 .item(22, Locales.getItem(player, "other.close").click(event -> Menus.COMMUNITY.open(event.getPlayer())))
-                .fillBackground(Util.isBedrockPlayer(player) ? Material.AIR : Material.WHITE_STAINED_GLASS_PANE)
                 .open(player);
     }
 }
